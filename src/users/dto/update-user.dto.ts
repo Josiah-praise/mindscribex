@@ -1,9 +1,9 @@
-import { PartialType, OmitType, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { IsOptional, IsUrl } from 'class-validator';
 import { CreateUserDto } from './create-user.dto';
 
 export class UpdateUserDto extends PartialType(
-  OmitType(CreateUserDto, ['password', 'email'] as const),
+  OmitType(CreateUserDto, ['password' as never, 'email' as never] as const),
 ) {
   @ApiPropertyOptional({
     example: 'https://storage.com/avatar.png',

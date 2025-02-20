@@ -1,7 +1,9 @@
 import { ApiProperty, OmitType } from '@nestjs/swagger';
 import { User } from 'src/entities/user';
 
-export class UserResponseDto extends OmitType(User, ['password'] as const) {}
+export class UserResponseDto extends OmitType(User, [
+  'password' as never,
+] as const) {}
 export class PaginationMetaDataDto {
   @ApiProperty()
   total: number;

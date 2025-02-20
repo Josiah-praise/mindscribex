@@ -80,7 +80,7 @@ export class FileUploadService {
     if (error instanceof S3ServiceException) {
       throw new InternalServerErrorException({
         message: 'Failed to upload file to S3',
-        error: error.message,
+        error: (error as any).message,
       });
     }
 

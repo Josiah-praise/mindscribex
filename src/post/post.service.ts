@@ -185,17 +185,20 @@ export class PostService {
     updatePostDto: UpdatePostDto,
   ) {
     let $bannerUrl;
-    $bannerUrl = updatePostDto.bannerUrl; // bannerUrl should take precedence over file upload
+    $bannerUrl = (updatePostDto as any).bannerUrl; // bannerUrl should take precedence over file upload
     if (!$bannerUrl && file)
       // if no  url is sent, upload the file and get the url
-      $bannerUrl = await this.fileUploadService.uploadFile(file, user.id);
+      $bannerUrl = await this.fileUploadService.uploadFile(
+        file,
+        (user as any).id,
+      );
 
     try {
       return await this.prismaService.post.update({
-        where: { id: postId, authorId: user.id },
+        where: { id: postId, authorId: (user as any).id },
         data: {
           ...updatePostDto,
-          bannerUrl: bannerUrl ? bannerUrl : undefined,
+          bannerUrl: $bannerUrl ? $bannerUrl : undefined,
         },
       });
     } catch (error) {
@@ -221,7 +224,9 @@ export class PostService {
   }
 
   async uploadFile(user: UserResponseDto, file: Express.Multer.File) {
-    return { url: await this.fileUploadService.uploadFile(file, user.id) };
+    return {
+      url: await this.fileUploadService.uploadFile(file, (user as any).id),
+    };
   }
 
   async likePost(postId: string, userId: string) {
