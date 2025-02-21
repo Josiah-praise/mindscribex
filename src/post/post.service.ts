@@ -14,6 +14,8 @@ import { PrismaService } from 'src/services/prisma.service';
 import { UserResponseDto } from 'src/users/dto/userResponse.dto';
 import { FileUploadService } from 'src/services/fileUpload.service';
 import { CommentResponseDto } from 'src/dtos/comments.dto';
+import { BookmarkResponseDto } from 'src/dtos/bookmark.dto';
+
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -231,12 +233,13 @@ export class PostService {
 
   async likePost(postId: string, userId: string) {
     try {
-      return await this.prismaService.postLike.create({
+      await this.prismaService.postLike.create({
         data: {
           userId,
           postId,
         },
       });
+      return { success: true };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -254,7 +257,7 @@ export class PostService {
 
   async unlikePost(postId: string, userId: string) {
     try {
-      return await this.prismaService.postLike.delete({
+      await this.prismaService.postLike.delete({
         where: {
           userId_postId: {
             userId,
@@ -262,6 +265,7 @@ export class PostService {
           },
         },
       });
+      return { success: true };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -429,7 +433,7 @@ export class PostService {
     }
   }
 
-  async bookmark(postId: string, userId: string) {
+  async bookmark(postId: string, userId: string): Promise<BookmarkResponseDto> {
     try {
       return await this.prismaService.bookmark.create({
         data: {

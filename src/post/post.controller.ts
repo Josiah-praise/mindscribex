@@ -27,6 +27,7 @@ import {
   ApiResponse,
   ApiNoContentResponse,
   ApiCreatedResponse,
+  ApiConflictResponse,
   ApiInternalServerErrorResponse,
   ApiOperation,
   ApiTags,
@@ -37,6 +38,7 @@ import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiParam,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { PrismaService } from 'src/services/prisma.service';
 import { JwtGuard } from 'src/auth/jwt.guard';
@@ -52,6 +54,10 @@ import {
   CreatePostDto,
 } from './post.dto';
 import { CommentResponseDto, CreateCommentDto } from 'src/dtos/comments.dto';
+import {
+  BookmarkResponseDto,
+  GetBookmarkResponseDto,
+} from 'src/dtos/bookmark.dto';
 import { OptionalJwtGuard } from 'src/auth/optionaljwt.strategy';
 
 @ApiTags('posts')
@@ -204,10 +210,14 @@ export class PostController {
   })
   @ApiBearerAuth()
   @ApiResponse({
-    status: 201,
-    description: 'The post has been successfully liked',
+    status: 200,
     schema: {
       type: 'object',
+      properties: {
+        isLiked: {
+          type: 'boolean',
+        },
+      },
     },
   })
   @ApiResponse({
@@ -223,7 +233,7 @@ export class PostController {
     description: 'Conflict - User has already liked this post',
   })
   @UseGuards(JwtGuard)
-  @Get('isliked/:id')
+  @Get(':id/isliked')
   async isLiked(@Param('id', ParseUUIDPipe) postId, @Req() req: Request) {
     const count = await this.prismaService.postLike.count({
       where: {
@@ -493,6 +503,11 @@ export class PostController {
     description: 'The post has been successfully liked',
     schema: {
       type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+        },
+      },
     },
   })
   @ApiResponse({
@@ -531,6 +546,11 @@ export class PostController {
     description: 'The post has been successfully liked',
     schema: {
       type: 'object',
+      properties: {
+        success: {
+          type: 'boolean',
+        },
+      },
     },
   })
   @ApiResponse({
@@ -565,7 +585,17 @@ export class PostController {
   })
   @ApiResponse({
     status: 200,
-    example: { count: 20 },
+    schema: {
+      type: 'object',
+      properties: {
+        count: {
+          type: 'number',
+        },
+        isLikedByUser: {
+          type: 'boolean',
+        },
+      },
+    },
   })
   @UseGuards(OptionalJwtGuard)
   @Get(':postId/likes')
@@ -573,7 +603,7 @@ export class PostController {
     return await this.postService.getLikes(postId, req.user as any);
   }
 
-  @ApiOperation({ description: 'comment on a post' })
+  @ApiOperation({ summary: 'comment on a post' })
   @ApiParam({
     name: 'id',
     required: true,
@@ -581,6 +611,7 @@ export class PostController {
     schema: { type: 'string', format: 'uuid' },
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
+  @ApiResponse({ status: 201, type: CommentResponseDto })
   @ApiBearerAuth()
   @ApiBadRequestResponse({ description: 'Bad request' })
   @ApiNotFoundResponse({ description: 'Post not found' })
@@ -605,11 +636,20 @@ export class PostController {
   @ApiBearerAuth()
   @UseGuards(JwtGuard)
   @Put(':postId/comments')
+  @ApiOperation({ summary: 'Update an existing comment on a post' })
+  @ApiOkResponse({
+    description: 'Successfully updated comment',
+    type: CommentResponseDto,
+  })
+  @ApiBadRequestResponse({ description: 'Invalid request body or parameters' })
+  @ApiNotFoundResponse({ description: 'Post not found' })
+  @ApiUnauthorizedResponse({ description: 'User not authenticated' })
+  @ApiInternalServerErrorResponse({ description: 'Unexpected server error' })
   async updateComment(
     @Body() createCommentDto: CreateCommentDto,
     @Req() req: Request,
     @Param('postId', ParseUUIDPipe) postId: string,
-  ) {
+  ): Promise<CommentResponseDto> {
     return await this.postService.updateComment(
       createCommentDto.comment,
       (req.user as any).id,
@@ -618,6 +658,50 @@ export class PostController {
   }
 
   @Get(':postId/comments')
+  @ApiOperation({ summary: 'Get comments for a post with pagination' })
+  @ApiParam({
+    name: 'postId',
+    type: 'string',
+    format: 'uuid',
+    description: 'The UUID of the post',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @ApiQuery({
+    name: 'page',
+    type: 'number',
+    required: false,
+    description: 'Page number',
+  })
+  @ApiQuery({
+    name: 'limit',
+    type: 'number',
+    required: false,
+    description: 'Number of comments per page',
+  })
+  @ApiOkResponse({
+    description: 'Successfully retrieved comments',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: getSchemaPath(CommentResponseDto) },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            total: { type: 'number', example: 100 },
+            page: { type: 'number', example: 1 },
+            currPageTotal: { type: 'number', example: 10 },
+            limit: { type: 'number', example: 10 },
+            totalPages: { type: 'number', example: 10 },
+            hasNextPage: { type: 'boolean', example: true },
+            hasPreviousPage: { type: 'boolean', example: false },
+          },
+        },
+      },
+    },
+  })
   async getComments(
     @Query() paginationDto: PaginationDTO,
     @Param('postId', ParseUUIDPipe) postId: string,
@@ -629,10 +713,24 @@ export class PostController {
     );
   }
 
-  @ApiBearerAuth()
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtGuard)
   @Delete(':postId/comments')
+  @HttpCode(HttpStatus.NO_CONTENT) // 204 No Content
+  @UseGuards(JwtGuard) // Protects the route
+  @ApiBearerAuth() // Requires JWT authentication
+  @ApiOperation({ summary: 'Delete a comment by postId (Authenticated User)' })
+  @ApiParam({
+    name: 'postId',
+    type: 'string',
+    format: 'uuid',
+    description: 'The UUID of the post where the comment exists',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @ApiNoContentResponse({ description: 'Comment successfully deleted' })
+  @ApiUnauthorizedResponse({ description: 'User is not authenticated' })
+  @ApiForbiddenResponse({
+    description: 'User is not allowed to delete this comment',
+  })
+  @ApiNotFoundResponse({ description: 'Comment not found' })
   async deleteComment(@Req() req: Request, @Param('postId') postId: string) {
     const userId = (req.user as any).id;
     await this.postService.deleteComment(postId, userId);
@@ -641,7 +739,18 @@ export class PostController {
   @ApiBearerAuth()
   @UseGuards(JwtGuard)
   @Post(':postId/bookmarks')
-  async bookmark(@Param('postId') postId: string, @Req() req: Request) {
+  @ApiOperation({ summary: 'Bookmark a post' })
+  @ApiCreatedResponse({
+    description: 'Successfully bookmarked the post',
+    type: BookmarkResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'User not authenticated' })
+  @ApiConflictResponse({ description: 'Post is already bookmarked' })
+  @ApiInternalServerErrorResponse({ description: 'Unexpected server error' })
+  async bookmark(
+    @Param('postId') postId: string,
+    @Req() req: Request,
+  ): Promise<BookmarkResponseDto> {
     const userId = (req.user as any).id;
     return await this.postService.bookmark(postId, userId);
   }
@@ -650,15 +759,35 @@ export class PostController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtGuard)
   @Delete(':postId/bookmarks')
-  async removeBookmark(@Param('postId') postId: string, @Req() req: Request) {
+  @ApiOperation({ summary: 'Remove bookmark from a post' })
+  @ApiNoContentResponse({ description: 'Successfully removed bookmark' })
+  @ApiUnauthorizedResponse({ description: 'User not authenticated' })
+  @ApiNotFoundResponse({ description: 'Bookmark not found' })
+  @ApiInternalServerErrorResponse({ description: 'Unexpected server error' })
+  async removeBookmark(
+    @Param('postId') postId: string,
+    @Req() req: Request,
+  ): Promise<void> {
     const userId = (req.user as any).id;
-    return await this.postService.removeBookmark(postId, userId);
+    await this.postService.removeBookmark(postId, userId);
   }
 
   @ApiBearerAuth()
   @UseGuards(JwtGuard)
   @Get(':postId/bookmarks')
-  async getBookmark(@Param('postId') postId: string, @Req() req: Request) {
+  @ApiOperation({
+    summary: 'Check if the signed-in user has bookmarked a post',
+  })
+  @ApiOkResponse({
+    description: 'Successfully retrieved bookmark status',
+    type: GetBookmarkResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'User not authenticated' })
+  @ApiInternalServerErrorResponse({ description: 'Unexpected server error' })
+  async getBookmark(
+    @Param('postId') postId: string,
+    @Req() req: Request,
+  ): Promise<GetBookmarkResponseDto> {
     const userId = (req.user as any).id;
     return await this.postService.getBookmark(postId, userId);
   }

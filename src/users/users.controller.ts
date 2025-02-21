@@ -18,7 +18,6 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtGuard } from 'src/auth/jwt.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -30,10 +29,11 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiTags,
-  ApiCreatedResponse,
+  ApiConsumes,
   ApiForbiddenResponse,
   ApiInternalServerErrorResponse,
   ApiOkResponse,
+  ApiResponse,
   ApiNoContentResponse,
   ApiBearerAuth,
   ApiBody,
@@ -81,14 +81,16 @@ export class UsersController {
   })
   @ApiBody({
     description: 'The credentials of the user to be updated',
+    type: UpdateUserDto,
   })
   @ApiInternalServerErrorResponse({
     description: 'Unexpected error on the server',
   })
-  @ApiCreatedResponse({
+  @ApiOkResponse({
     description: 'User successfully updated',
     type: UserResponseDto,
   })
+  @HttpCode(HttpStatus.OK)
   @UseGuards(JwtGuard)
   @Put(':id')
   async updateUser(
@@ -185,16 +187,38 @@ export class UsersController {
     await this.userService.deleteUserById((req.user as any).id);
   }
 
+  @Patch('me/avatar')
   @UseInterceptors(FileInterceptor('avatar'))
   @UseGuards(JwtGuard)
-  @Patch('me/avatar')
+  @ApiBearerAuth() // Indicates JWT authentication is required
+  @ApiConsumes('multipart/form-data') // Specifies multipart file upload
+  @ApiOperation({ summary: 'Upload a new avatar' }) // Short description
+  @ApiBody({
+    description: 'Avatar image upload',
+    required: true,
+    schema: {
+      type: 'object',
+      properties: {
+        avatar: {
+          type: 'string',
+          format: 'binary', // Required for Swagger file upload
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Avatar uploaded successfully' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid file format or file too large',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async uploadAvatar(
     @Req() req: Request,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 1000 * 1000 * 5 }),
-          new FileTypeValidator({ fileType: /image\/(jpeg|png)/ }),
+          new MaxFileSizeValidator({ maxSize: 1000 * 1000 * 5 }), // 5MB limit
+          new FileTypeValidator({ fileType: /image\/(jpeg|png)/ }), // Only JPEG & PNG allowed
         ],
       }),
     )

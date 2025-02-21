@@ -1,231 +1,284 @@
-#!/usr/bin/python3
-import random
+import psycopg2
+from faker import Faker
 from datetime import datetime, timedelta
 import uuid
-import hashlib
-from typing import List, Dict, Any
+import random
+import bcrypt
+from typing import List
+import os
+from dotenv import load_dotenv
+import string
 
-# Constants for data generation
-NUM_USERS = 50
-NUM_POSTS = 500
-NUM_COMMENTS = 1000
-NUM_LIKES = 1500
-NUM_FOLLOWERS = 200
-NUM_BOOKMARKS = 300
-NUM_SERIES = 30
+# Load environment variables
+load_dotenv()
 
-# Helper functions
-def generate_uuid():
-    return str(uuid.uuid4())
+# Initialize Faker
+fake = Faker()
 
-def generate_date(start_date: datetime, end_date: datetime) -> datetime:
-    time_between_dates = end_date - start_date
-    days_between_dates = time_between_dates.days
-    random_number_of_days = random.randrange(days_between_dates)
-    return start_date + timedelta(days=random_number_of_days)
+# Configuration
+DEFAULT_PASSWORD = "MySecurePassword123"  # This will be the password for all users
+HASHED_PASSWORD = bcrypt.hashpw(DEFAULT_PASSWORD.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
-
-# Data generators
-def generate_users(num_users: int) -> List[Dict[str, Any]]:
-    users = []
-    for i in range(num_users):
-        user_id = generate_uuid()
-        firstname = f"FirstName{i}"
-        lastname = f"LastName{i}"
-        username = f"user{i}"
-        users.append({
-            "id": user_id,
-            "email": f"user{i}@example.com",
-            "firstname": firstname,
-            "lastname": lastname,
-            "username": username,
-            "password": hash_password(f"password{i}"),
-            "avatarUrl": f"https://avatar.example.com/{i}.jpg" if random.random() > 0.5 else None,
-            "facebookLink": f"https://facebook.com/{username}" if random.random() > 0.7 else None,
-            "instagramLink": f"https://instagram.com/{username}" if random.random() > 0.7 else None,
-            "xLink": f"https://x.com/{username}" if random.random() > 0.7 else None,
-            "twitchLink": f"https://twitch.tv/{username}" if random.random() > 0.8 else None,
-            "youtubeLink": f"https://youtube.com/{username}" if random.random() > 0.8 else None,
-            "isValid": random.random() > 0.1,
-            "createdAt": generate_date(datetime(2023, 1, 1), datetime(2024, 3, 1)),
-        })
-    return users
-
-def generate_series(users: List[Dict[str, Any]], num_series: int) -> List[Dict[str, Any]]:
-    series = []
-    for i in range(num_series):
-        owner = random.choice(users)
-        series.append({
-            "id": generate_uuid(),
-            "title": f"Series {i}",
-            "ownerId": owner["id"],
-            "createdAt": generate_date(owner["createdAt"], datetime(2024, 3, 1)),
-        })
-    return series
-
-def generate_posts(users: List[Dict[str, Any]], series: List[Dict[str, Any]], num_posts: int) -> List[Dict[str, Any]]:
-    posts = []
-    for i in range(num_posts):
-        author = random.choice(users)
-        series_entry = random.choice(series + [None] * 3)  # 25% chance of being in a series
-        posts.append({
-            "id": generate_uuid(),
-            "authorId": author["id"],
-            "bannerUrl": f"https://banner.example.com/{i}.jpg" if random.random() > 0.3 else None,
-            "title": f"Post Title {i}",
-            "content": f"This is the content for post {i}. It contains meaningful information...",
-            "published": random.random() > 0.1,
-            "readTime": random.randint(1, 20),
-            "seriesId": series_entry["id"] if series_entry else None,
-            "createdAt": generate_date(author["createdAt"], datetime(2024, 3, 1)),
-        })
-    return posts
-
-def generate_comments(users: List[Dict[str, Any]], posts: List[Dict[str, Any]], num_comments: int) -> List[Dict[str, Any]]:
-    comments = []
-    base_comments = num_comments // 2  # Half will be base comments, half will be replies
-    
-    # Generate base comments
-    for i in range(base_comments):
-        user = random.choice(users)
-        post = random.choice(posts)
-        comments.append({
-            "id": generate_uuid(),
-            "userId": user["id"],
-            "postId": post["id"],
-            "comment": f"This is comment {i} on the post.",
-            "parentId": None,
-            "createdAt": generate_date(post["createdAt"], datetime(2024, 3, 1)),
-        })
-    
-    # Generate reply comments
-    for i in range(base_comments, num_comments):
-        user = random.choice(users)
-        parent_comment = random.choice(comments[:base_comments])
-        comments.append({
-            "id": generate_uuid(),
-            "userId": user["id"],
-            "postId": parent_comment["postId"],
-            "comment": f"This is a reply to comment {i}.",
-            "parentId": parent_comment["id"],
-            "createdAt": generate_date(parent_comment["createdAt"], datetime(2024, 3, 1)),
-        })
-    
-    return comments
-
-def generate_post_likes(users: List[Dict[str, Any]], posts: List[Dict[str, Any]], num_likes: int) -> List[Dict[str, Any]]:
-    likes = []
-    user_post_pairs = set()
-    
-    while len(likes) < num_likes:
-        user = random.choice(users)
-        post = random.choice(posts)
-        pair = (user["id"], post["id"])
-        
-        if pair not in user_post_pairs:
-            user_post_pairs.add(pair)
-            likes.append({
-                "id": generate_uuid(),
-                "userId": user["id"],
-                "postId": post["id"],
-                "isLiked": True,
-                "createdAt": generate_date(post["createdAt"], datetime(2024, 3, 1)),
-            })
-    
-    return likes
-
-def generate_comment_likes(users: List[Dict[str, Any]], comments: List[Dict[str, Any]], num_likes: int) -> List[Dict[str, Any]]:
-    likes = []
-    user_comment_pairs = set()
-    
-    while len(likes) < num_likes:
-        user = random.choice(users)
-        comment = random.choice(comments)
-        pair = (user["id"], comment["id"])
-        
-        if pair not in user_comment_pairs:
-            user_comment_pairs.add(pair)
-            likes.append({
-                "id": generate_uuid(),
-                "userId": user["id"],
-                "commentId": comment["id"],
-                "isLiked": True,
-                "createdAt": generate_date(comment["createdAt"], datetime(2024, 3, 1)),
-            })
-    
-    return likes
-
-def generate_followers(users: List[Dict[str, Any]], num_followers: int) -> List[Dict[str, Any]]:
-    followers = []
-    user_follower_pairs = set()
-    
-    while len(followers) < num_followers:
-        user = random.choice(users)
-        follower = random.choice(users)
-        
-        if user["id"] != follower["id"]:
-            pair = (user["id"], follower["id"])
-            if pair not in user_follower_pairs:
-                user_follower_pairs.add(pair)
-                followers.append({
-                    "id": generate_uuid(),
-                    "userId": user["id"],
-                    "followingId": follower["id"],
-                    "createdAt": generate_date(max(user["createdAt"], follower["createdAt"]), datetime(2024, 3, 1)),
-                })
-    
-    return followers
-
-def generate_bookmarks(users: List[Dict[str, Any]], posts: List[Dict[str, Any]], num_bookmarks: int) -> List[Dict[str, Any]]:
-    bookmarks = []
-    user_post_pairs = set()
-    
-    while len(bookmarks) < num_bookmarks:
-        user = random.choice(users)
-        post = random.choice(posts)
-        pair = (user["id"], post["id"])
-        
-        if pair not in user_post_pairs:
-            user_post_pairs.add(pair)
-            bookmarks.append({
-                "id": generate_uuid(),
-                "userId": user["id"],
-                "postId": post["id"],
-                "createdAt": generate_date(post["createdAt"], datetime(2024, 3, 1)),
-            })
-    
-    return bookmarks
-
-# Generate all data
-users = generate_users(NUM_USERS)
-series = generate_series(users, NUM_SERIES)
-posts = generate_posts(users, series, NUM_POSTS)
-comments = generate_comments(users, posts, NUM_COMMENTS)
-post_likes = generate_post_likes(users, posts, NUM_LIKES)
-comment_likes = generate_comment_likes(users, comments, NUM_LIKES)
-followers = generate_followers(users, NUM_FOLLOWERS)
-bookmarks = generate_bookmarks(users, posts, NUM_BOOKMARKS)
-
-# Create the final seed data dictionary
-seed_data = {
-    "users": users,
-    "series": series,
-    "posts": posts,
-    "comments": comments,
-    "post_likes": post_likes,
-    "comment_likes": comment_likes,
-    "followers": followers,
-    "bookmarks": bookmarks,
+# Number of records to generate
+COUNTS = {
+    'users': 50,
+    'series': 20,
+    'posts_per_user': (1, 5),  # Random number between 1 and 5 posts per user
+    'comments_per_post': (0, 3),  # Random number between 0 and 3 comments per post
+    'likes_percentage': 0.3,  # 30% chance of a user liking a post
+    'bookmarks_percentage': 0.2,  # 20% chance of a user bookmarking a post
+    'followers_percentage': 0.1,  # 10% chance of a user following another user
 }
 
-# Optional: Print some statistics
-print(f"Generated data statistics:")
-for key, value in seed_data.items():
-    print(f"{key}: {len(value)} records")
+class DatabaseSeeder:
+    def __init__(self):
+        self.conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+        self.cur = self.conn.cursor()
+        self.users: List[str] = []  # Store user IDs
+        self.posts: List[str] = []  # Store post IDs
+        self.comments: List[str] = []  # Store comment IDs
+        self.series: List[str] = []  # Store series IDs
+        self.used_usernames = set()
+        self.used_emails = set()
 
-# Optional: Save to a file
-import json
-with open('seed_data.json', 'w') as f:
-    json.dump(seed_data, f, default=str)  # default=str handles datetime serialization
+    def generate_unique_username(self, base_username):
+        """Generate a unique username by adding random suffix if needed"""
+        if base_username not in self.used_usernames:
+            self.used_usernames.add(base_username)
+            return base_username
+        
+        while True:
+            # Add random numbers and letters to make username unique
+            suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+            new_username = f"{base_username}_{suffix}"
+            
+            if new_username not in self.used_usernames:
+                self.used_usernames.add(new_username)
+                return new_username
+
+    def generate_unique_email(self, base_name):
+        """Generate a unique email address"""
+        while True:
+            domain = random.choice(['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'])
+            suffix = ''.join(random.choices(string.digits, k=3))
+            email = f"{base_name}{suffix}@{domain}"
+            
+            if email not in self.used_emails:
+                self.used_emails.add(email)
+                return email
+
+    def clean_database(self):
+        """Clean all existing data from the database"""
+        tables = [
+            'Bookmark', 'PostLike', 'CommentLike', 'Comment',
+            'Post', 'Follower', 'Series', 'User'
+        ]
+        
+        for table in reversed(tables):
+            try:
+                self.cur.execute(f'TRUNCATE TABLE "{table}" CASCADE;')
+                self.conn.commit()
+            except psycopg2.Error as e:
+                print(f"Warning: Could not truncate {table}: {e}")
+                self.conn.rollback()
+
+    def generate_users(self):
+        """Generate random users"""
+        for _ in range(COUNTS['users']):
+            user_id = str(uuid.uuid4())
+            self.users.append(user_id)
+            
+            # Generate base username and email
+            firstname = fake.first_name().lower()
+            lastname = fake.last_name().lower()
+            base_username = f"{firstname}{lastname}"
+            
+            # Ensure uniqueness
+            username = self.generate_unique_username(base_username)
+            email = self.generate_unique_email(f"{firstname}.{lastname}")
+            
+            # Random social media links
+            social_links = {
+                'facebookLink': fake.boolean(chance_of_getting_true=30),
+                'instagramLink': fake.boolean(chance_of_getting_true=40),
+                'xLink': fake.boolean(chance_of_getting_true=20),
+                'twitchLink': fake.boolean(chance_of_getting_true=15),
+                'youtubeLink': fake.boolean(chance_of_getting_true=25),
+            }
+
+            try:
+                self.cur.execute("""
+                    INSERT INTO "User" (
+                        id, email, firstname, lastname, username, password,
+                        "facebookLink", "instagramLink", "xLink", "twitchLink", "youtubeLink",
+                        "isValid", "isStaff", "isSuperUser", "createdAt", "updatedAt"
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    email,
+                    firstname.capitalize(),
+                    lastname.capitalize(),
+                    username,
+                    HASHED_PASSWORD,
+                    f"https://facebook.com/{username}" if social_links['facebookLink'] else None,
+                    f"https://instagram.com/{username}" if social_links['instagramLink'] else None,
+                    f"https://x.com/{username}" if social_links['xLink'] else None,
+                    f"https://twitch.tv/{username}" if social_links['twitchLink'] else None,
+                    f"https://youtube.com/{username}" if social_links['youtubeLink'] else None,
+                    True,
+                    random.random() < 0.1,  # 10% chance of being staff
+                    random.random() < 0.02,  # 2% chance of being superuser
+                    fake.date_time_between(start_date='-1y'),
+                    fake.date_time_between(start_date='-6m'),
+                ))
+                self.conn.commit()
+            except psycopg2.Error as e:
+                print(f"Warning: Could not create user {username}: {e}")
+                self.conn.rollback()
+                continue
+
+    # ... [rest of the methods remain the same] ...
+    def generate_series(self):
+        """Generate random series"""
+        for _ in range(COUNTS['series']):
+            series_id = str(uuid.uuid4())
+            self.series.append(series_id)
+            self.cur.execute("""
+                INSERT INTO "Series" (id, title, "ownerId", "createdAt", "updatedAt")
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                series_id,
+                fake.catch_phrase(),
+                random.choice(self.users),
+                fake.date_time_between(start_date='-1y'),
+                fake.date_time_between(start_date='-6m'),
+            ))
+
+    def generate_posts(self):
+        """Generate random posts"""
+        for user_id in self.users:
+            post_count = random.randint(*COUNTS['posts_per_user'])
+            for _ in range(post_count):
+                post_id = str(uuid.uuid4())
+                self.posts.append(post_id)
+                self.cur.execute("""
+                    INSERT INTO "Post" (
+                        id, "authorId", title, content, published,
+                        "createdAt", "updatedAt", "readTime", "seriesId"
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    post_id,
+                    user_id,
+                    fake.sentence(),
+                    fake.text(max_nb_chars=2000),
+                    True,
+                    fake.date_time_between(start_date='-1y'),
+                    fake.date_time_between(start_date='-6m'),
+                    random.randint(2, 15),
+                    random.choice(self.series) if random.random() < 0.3 else None,  # 30% chance of being in a series
+                ))
+
+        """Generate likes, bookmarks, and followers"""
+        # Generate post likes
+        for post_id in self.posts:
+            for user_id in random.sample(
+                self.users,
+                k=int(len(self.users) * COUNTS['likes_percentage'])
+            ):
+                if random.random() < COUNTS['likes_percentage']:
+                    try:
+                        self.cur.execute("""
+                            INSERT INTO "PostLike" (
+                                id, "userId", "postId", "createdAt", "updatedAt"
+                            )
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            str(uuid.uuid4()),
+                            user_id,
+                            post_id,
+                            fake.date_time_between(start_date='-1y'),
+                            fake.date_time_between(start_date='-6m'),
+                        ))
+                    except psycopg2.Error:
+                        continue
+
+        # Generate bookmarks
+        for post_id in self.posts:
+            for user_id in random.sample(
+                self.users,
+                k=int(len(self.users) * COUNTS['bookmarks_percentage'])
+            ):
+                try:
+                    self.cur.execute("""
+                        INSERT INTO "Bookmark" (
+                            id, "userId", "postId", "createdAt", "updatedAt"
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        str(uuid.uuid4()),
+                        user_id,
+                        post_id,
+                        fake.date_time_between(start_date='-1y'),
+                        fake.date_time_between(start_date='-6m'),
+                    ))
+                except psycopg2.Error:
+                    continue
+
+        # Generate followers
+        for user_id in self.users:
+            for potential_follower in random.sample(
+                [u for u in self.users if u != user_id],
+                k=int(len(self.users) * COUNTS['followers_percentage'])
+            ):
+                try:
+                    self.cur.execute("""
+                        INSERT INTO "Follower" (
+                            id, "userId", "followingId", "createdAt", "updatedAt"
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        str(uuid.uuid4()),
+                        potential_follower,
+                        user_id,
+                        fake.date_time_between(start_date='-1y'),
+                        fake.date_time_between(start_date='-6m'),
+                    ))
+                except psycopg2.Error:
+                    continue
+
+    def seed(self):
+        """Run the complete seeding process"""
+        try:
+            print("Cleaning database...")
+            self.clean_database()
+            
+            print("Generating users...")
+            self.generate_users()
+            
+            print("Generating series...")
+            self.generate_series()
+            
+            print("Generating posts...")
+            self.generate_posts()
+            
+            print("Generating comments...")
+            self.generate_comments()
+            
+            print("Generating interactions...")
+            self.generate_interactions()
+            
+            self.conn.commit()
+            print("Database seeded successfully!")
+            
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Error seeding database: {e}")
+            raise
+        finally:
+            self.cur.close()
+            self.conn.close()
+
+if __name__ == "__main__":
+    seeder = DatabaseSeeder()
+    seeder.seed()
